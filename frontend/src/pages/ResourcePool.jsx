@@ -9,26 +9,7 @@ import { Add, Edit, Person, Description as FormIcon } from '@mui/icons-material'
 import { getProjects } from '../services/api';
 
 /* ── Resource Pool Data (organisation-wide) ── */
-const RESOURCE_POOL = [
-  { id: 'R-001', name: 'John Carter', role: 'Project Manager', type: 'Labour', unit: 'hrs', rate: 95, allocation: 100, project: 'ERP System Migration', availability: 'Assigned' },
-  { id: 'R-002', name: 'Sarah Mitchell', role: 'Lead Engineer', type: 'Labour', unit: 'hrs', rate: 85, allocation: 80, project: 'ERP System Migration', availability: 'Assigned' },
-  { id: 'R-003', name: 'David Lee', role: 'Site Supervisor', type: 'Labour', unit: 'hrs', rate: 65, allocation: 100, project: 'ERP System Migration', availability: 'Assigned' },
-  { id: 'R-004', name: 'Emma Wilson', role: 'Safety Officer', type: 'Labour', unit: 'hrs', rate: 70, allocation: 50, project: 'ERP System Migration', availability: 'Partial' },
-  { id: 'R-005', name: 'Tower Crane TC-200', role: '-', type: 'Equipment', unit: 'days', rate: 1200, allocation: 100, project: 'Highway Expansion', availability: 'Assigned' },
-  { id: 'R-006', name: 'Concrete Pump CP-50', role: '-', type: 'Equipment', unit: 'days', rate: 800, allocation: 60, project: 'Highway Expansion', availability: 'Partial' },
-  { id: 'R-007', name: 'Structural Steel', role: '-', type: 'Material', unit: 'tonnes', rate: 950, allocation: '-', project: 'Highway Expansion', availability: 'In Stock' },
-  { id: 'R-008', name: 'Ready-Mix Concrete', role: '-', type: 'Material', unit: 'm³', rate: 120, allocation: '-', project: 'Highway Expansion', availability: 'In Stock' },
-  { id: 'R-009', name: 'Rebar Grade 60', role: '-', type: 'Material', unit: 'tonnes', rate: 780, allocation: '-', project: 'Smart Grid Rollout', availability: 'Low Stock' },
-  { id: 'R-010', name: 'Lisa Chen', role: 'QA/QC Inspector', type: 'Labour', unit: 'hrs', rate: 72, allocation: 75, project: 'Smart Grid Rollout', availability: 'Assigned' },
-  { id: 'R-011', name: 'Mark Thompson', role: 'Electrical Engineer', type: 'Labour', unit: 'hrs', rate: 88, allocation: 100, project: 'Smart Grid Rollout', availability: 'Assigned' },
-  { id: 'R-012', name: 'Rachel Green', role: 'Procurement Lead', type: 'Labour', unit: 'hrs', rate: 78, allocation: 60, project: 'Cloud Migration', availability: 'Partial' },
-  { id: 'R-013', name: 'Excavator EX-350', role: '-', type: 'Equipment', unit: 'days', rate: 950, allocation: 100, project: 'Highway Expansion', availability: 'Assigned' },
-  { id: 'R-014', name: 'James Parker', role: 'Cost Controller', type: 'Labour', unit: 'hrs', rate: 80, allocation: 0, project: '-', availability: 'Available' },
-  { id: 'R-015', name: 'Survey Drone DJI-M300', role: '-', type: 'Equipment', unit: 'days', rate: 350, allocation: 0, project: '-', availability: 'Available' },
-  { id: 'R-016', name: 'Ana Roberts', role: 'Document Controller', type: 'Labour', unit: 'hrs', rate: 55, allocation: 40, project: 'ERP System Migration', availability: 'Partial' },
-  { id: 'R-017', name: 'Copper Cabling Cat6', role: '-', type: 'Material', unit: 'metres', rate: 3.5, allocation: '-', project: 'Smart Grid Rollout', availability: 'In Stock' },
-  { id: 'R-018', name: 'Tom Wilson', role: 'Scheduling Engineer', type: 'Labour', unit: 'hrs', rate: 82, allocation: 100, project: 'Cloud Migration', availability: 'Assigned' },
-];
+const RESOURCE_POOL = [];
 
 /* ── Resource Edit Dialog ── */
 function ResourceEditDialog({ open, onClose, resource, onSave }) {

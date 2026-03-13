@@ -39,7 +39,7 @@ const PROJECT_FIELDS = [
 const ACTIVITY_FIELDS = [
   { name: 'activity_code', label: 'Activity Code' },
   { name: 'activity_name', label: 'Activity Name', required: true },
-  { name: 'phase', label: 'Phase', type: 'select', options: ['Design', 'Procurement', 'Construction', 'Commissioning', 'Closure'], required: true },
+  { name: 'phase', label: 'Phase', type: 'select', options: ['Pre Gate B', 'Gate B-C', 'Gate C-D', 'Closure'], required: true },
   { name: 'planned_start', label: 'Planned Start', type: 'date', required: true },
   { name: 'planned_finish', label: 'Planned Finish', type: 'date', required: true },
   { name: 'actual_start', label: 'Actual Start', type: 'date' },
@@ -51,7 +51,7 @@ const ACTIVITY_FIELDS = [
 
 const MILESTONE_FIELDS = [
   { name: 'name', label: 'Milestone Name', required: true },
-  { name: 'phase', label: 'Phase', type: 'select', options: ['Design', 'Procurement', 'Construction', 'Commissioning', 'Closure'], required: true },
+  { name: 'phase', label: 'Phase', type: 'select', options: ['Pre Gate B', 'Gate B-C', 'Gate C-D', 'Closure'], required: true },
   { name: 'planned_date', label: 'Planned Date', type: 'date', required: true },
   { name: 'actual_date', label: 'Actual Date', type: 'date' },
   { name: 'is_critical', label: 'Is Critical', type: 'boolean' },
@@ -126,7 +126,7 @@ export default function ProjectView() {
   };
 
   // Activity CRUD
-  const handleCreateActivity = () => openForm('New Activity', ACTIVITY_FIELDS, { phase: 'Construction', completion_pct: 0, is_milestone: false, is_critical: false }, async (vals) => {
+  const handleCreateActivity = () => openForm('New Activity', ACTIVITY_FIELDS, { phase: 'Gate C-D', completion_pct: 0, is_milestone: false, is_critical: false }, async (vals) => {
     await createActivity({ ...vals, project_id: selectedProject }); closeForm(); loadActivities(selectedProject); showSnack('Activity created');
   });
   const handleEditActivity = (a) => openForm('Edit Activity', ACTIVITY_FIELDS, a, async (vals) => {
@@ -138,7 +138,7 @@ export default function ProjectView() {
   };
 
   // Milestone CRUD
-  const handleCreateMilestone = () => openForm('New Milestone', MILESTONE_FIELDS, { phase: 'Construction', is_critical: false }, async (vals) => {
+  const handleCreateMilestone = () => openForm('New Milestone', MILESTONE_FIELDS, { phase: 'Gate C-D', is_critical: false }, async (vals) => {
     try { await createMilestone({ ...vals, project_id: selectedProject }); closeForm(); loadMilestones(selectedProject); showSnack('Milestone created'); }
     catch (err) { showSnack(err.response?.data?.detail || 'Error', 'error'); }
   });

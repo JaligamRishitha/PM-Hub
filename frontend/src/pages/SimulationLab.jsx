@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Box, Button, Tab, Tabs, Paper, Typography, MenuItem, TextField, Grid, Card,
-  CardContent, Alert, Snackbar, Chip, Stack, CircularProgress,
+  CardContent, Alert, Snackbar, Chip, Stack, CircularProgress, Divider,
 } from '@mui/material';
-import { Science, PlayArrow, Check, Close, TrendingDown, TrendingUp } from '@mui/icons-material';
+import { Science, PlayArrow, Check, Close, TrendingDown, TrendingUp, InfoOutlined } from '@mui/icons-material';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend,
   ResponsiveContainer, LineChart, Line, ReferenceLine, Cell,
@@ -19,7 +19,7 @@ function CompareCard({ label, before, after, prefix = '£', inverse = false }) {
   const isPositive = inverse ? diff < 0 : diff > 0;
   const isBad = inverse ? diff > 0 : diff < 0;
   return (
-    <Card sx={{ height: '100%' }}>
+    <Card sx={{ height: '100%', width: '100%' }}>
       <CardContent>
         <Typography variant="body2" color="text.secondary" gutterBottom>{label}</Typography>
         <Stack direction="row" spacing={2} alignItems="baseline">
@@ -124,7 +124,8 @@ export default function SimulationLab() {
     }
   };
 
-  const phases = ['Design', 'Construction', 'Closure'];
+  // Derive phases dynamically from loaded activities so they match the actual data
+  const phases = [...new Set(activities.map(a => a.phase))].filter(Boolean);
 
   return (
     <Box>
@@ -144,9 +145,6 @@ export default function SimulationLab() {
           <MenuItem value="">Choose a project</MenuItem>
           {projects.map(p => <MenuItem key={p.id} value={p.id}>{p.name}</MenuItem>)}
         </TextField>
-        {sessionId && (
-          <Chip label={`Session #${sessionId} (Draft)`} color="secondary" variant="outlined" icon={<Science />} />
-        )}
         {sessionId && results && (
           <>
             <Button variant="contained" color="success" startIcon={<Check />} onClick={handleApply}>
@@ -205,34 +203,150 @@ export default function SimulationLab() {
                     </Button>
                   </Grid>
                 </Grid>
+
+                {/* === Info panel when milestone or phase is selected === */}
+                {schedForm.milestone_id && (() => {
+                  const m = milestones.find(ms => ms.id === schedForm.milestone_id);
+                  if (!m) return null;
+                  const fmt = d => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                  // Find the exact matching activity by name
+                  const matchAct = activities.find(a => a.activity_name === m.name && a.phase === m.phase);
+                  return (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#f3e5f5', borderRadius: 2, border: '1px solid #ce93d8' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                        <InfoOutlined sx={{ color: '#7b1fa2', fontSize: 20 }} />
+                        <Typography variant="subtitle2" fontWeight={700} color="#7b1fa2">
+                          Milestone Details — {m.name}
+                        </Typography>
+                        {m.is_critical && <Chip label="Critical" size="small" color="error" />}
+                        <Chip label={m.status} size="small" color={m.status === 'Completed' ? 'success' : m.status === 'Delayed' ? 'error' : 'warning'} variant="outlined" />
+                      </Stack>
+                      <Grid container spacing={2}>
+                        <Grid item xs={6} sm={4}>
+                          <Typography variant="caption" color="text.secondary">Planned Start Date</Typography>
+                          <Typography variant="body2" fontWeight={600}>{matchAct ? fmt(matchAct.planned_start) : fmt(m.planned_date)}</Typography>
+                        </Grid>
+                        <Grid item xs={6} sm={4}>
+                          <Typography variant="caption" color="text.secondary">Planned Finish Date</Typography>
+                          <Typography variant="body2" fontWeight={600}>{matchAct ? fmt(matchAct.planned_finish) : fmt(m.planned_date)}</Typography>
+                        </Grid>
+                        <Grid item xs={6} sm={4}>
+                          <Typography variant="caption" color="text.secondary">Actual Start Date</Typography>
+                          <Typography variant="body2" fontWeight={600}>{matchAct?.actual_start ? fmt(matchAct.actual_start) : 'Not started'}</Typography>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  );
+                })()}
+
+                {schedForm.phase && (() => {
+                  const phaseActs = activities.filter(a => a.phase === schedForm.phase);
+                  if (phaseActs.length === 0) return null;
+                  const fmt = d => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+                  return (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#e8eaf6', borderRadius: 2, border: '1px solid #9fa8da' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" mb={1.5}>
+                        <InfoOutlined sx={{ color: '#283593', fontSize: 20 }} />
+                        <Typography variant="subtitle2" fontWeight={700} color="#283593">
+                          Phase Activities — {schedForm.phase}
+                        </Typography>
+                        <Chip label={`${phaseActs.length} activities`} size="small" variant="outlined" />
+                      </Stack>
+                      <Box sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #9fa8da' }}>
+                              <th style={{ textAlign: 'left', padding: '6px 8px', color: '#283593', fontWeight: 700 }}>Activity</th>
+                              <th style={{ textAlign: 'left', padding: '6px 8px', color: '#283593', fontWeight: 700 }}>Planned Start</th>
+                              <th style={{ textAlign: 'left', padding: '6px 8px', color: '#283593', fontWeight: 700 }}>Planned Finish</th>
+                              <th style={{ textAlign: 'left', padding: '6px 8px', color: '#283593', fontWeight: 700 }}>Actual Start</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {phaseActs.map(a => (
+                              <tr key={a.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                                <td style={{ padding: '5px 8px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.activity_name}</td>
+                                <td style={{ padding: '5px 8px' }}>{fmt(a.planned_start)}</td>
+                                <td style={{ padding: '5px 8px' }}>{fmt(a.planned_finish)}</td>
+                                <td style={{ padding: '5px 8px' }}>{a.actual_start ? fmt(a.actual_start) : 'Not started'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </Box>
+                    </Box>
+                  );
+                })()}
               </Paper>
 
               {results && results.before_milestones && (
                 <>
-                  <Grid container spacing={2} sx={{ mb: 3 }}>
-                    <Grid item xs={6} sm={3}>
+                  <Grid container spacing={2} sx={{ mb: 3, alignItems: 'stretch' }}>
+                    <Grid item xs={6} sm={3} sx={{ display: 'flex' }}>
                       <CompareCard label="Project End Date" before={results.original_end_date} after={results.simulated_end_date} prefix="" />
                     </Grid>
-                    <Grid item xs={6} sm={3}>
+                    <Grid item xs={6} sm={3} sx={{ display: 'flex' }}>
                       <CompareCard label="Total Delay" before={0} after={results.total_delay_days} prefix="" inverse />
                     </Grid>
-                    <Grid item xs={6} sm={3}>
-                      <Card><CardContent>
-                        <Typography variant="body2" color="text.secondary">Critical Impact</Typography>
+                    <Grid item xs={6} sm={3} sx={{ display: 'flex' }}>
+                      <Card sx={{ height: '100%', width: '100%' }}><CardContent>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>Critical Impact</Typography>
                         <Typography variant="h5" fontWeight={700} color={results.critical_milestone_impacted ? 'error.main' : 'success.main'}>
                           {results.critical_milestone_impacted ? 'YES' : 'NO'}
                         </Typography>
                       </CardContent></Card>
                     </Grid>
-                    <Grid item xs={6} sm={3}>
+                    <Grid item xs={6} sm={3} sx={{ display: 'flex' }}>
                       <CompareCard label="Project Status" before={results.project_status_before} after={results.project_status_after} prefix="" />
                     </Grid>
                   </Grid>
 
+                  {/* ── Cascade Breakdown ── */}
+                  {results.cascade_breakdown && results.cascade_breakdown.length > 0 && (
+                    <Paper sx={{ p: 3, mb: 3 }}>
+                      <Typography variant="h6" fontWeight={600} mb={1}>Phase Cascade — Delay Ripple Effect</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" mb={2}>
+                        Delaying <b>{results.trigger_phase || 'all phases'}</b> cascades to all subsequent phases
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {results.cascade_breakdown.map((cb, idx) => (
+                          <Grid item xs={6} sm={3} key={cb.phase}>
+                            <Card sx={{
+                              border: cb.is_trigger ? '2px solid #7c4dff' : cb.is_affected ? '2px solid #ff7043' : '1px solid #e0e0e0',
+                              bgcolor: cb.is_trigger ? '#ede7f6' : cb.is_affected ? '#fbe9e7' : '#fafafa',
+                              position: 'relative', overflow: 'visible',
+                            }}>
+                              {idx < results.cascade_breakdown.length - 1 && results.cascade_breakdown[idx + 1]?.is_affected && cb.is_affected && (
+                                <Box sx={{ position: 'absolute', right: -18, top: '50%', transform: 'translateY(-50%)', color: '#ff7043', fontWeight: 700, fontSize: 20 }}>→</Box>
+                              )}
+                              <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                  <Typography variant="subtitle2" fontWeight={700}>{cb.phase}</Typography>
+                                  {cb.is_trigger && <Chip label="Trigger" size="small" sx={{ bgcolor: '#7c4dff', color: '#fff', fontSize: 10, height: 20 }} />}
+                                  {!cb.is_trigger && cb.is_affected && <Chip label="Cascaded" size="small" sx={{ bgcolor: '#ff7043', color: '#fff', fontSize: 10, height: 20 }} />}
+                                  {!cb.is_affected && <Chip label="Unaffected" size="small" variant="outlined" sx={{ fontSize: 10, height: 20 }} />}
+                                </Box>
+                                <Typography variant="body2" color={cb.is_affected ? 'error.main' : 'text.secondary'} fontWeight={600}>
+                                  {cb.delay_days > 0 ? `+${cb.delay_days} days` : 'No delay'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {cb.milestones_shifted}/{cb.milestones_total} milestones shifted
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {cb.activities_shifted}/{cb.activities_total} activities shifted
+                                </Typography>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Paper>
+                  )}
+
                   <Paper sx={{ p: 3, mb: 3, height: Math.max(420, results.after_milestones.length * 60 + 100) }}>
                     <Typography variant="h6" fontWeight={600} mb={1}>Milestone Comparison — Before vs After Impact</Typography>
                     <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                      Horizontal bars show each milestone's timeline — compare blue (before) vs red (after) to see the shift
+                      Horizontal bars show each milestone's timeline — compare teal (before) vs purple (after) to see the shift
                     </Typography>
                     <ResponsiveContainer width="100%" height="88%">
                       <BarChart
@@ -266,8 +380,8 @@ export default function SimulationLab() {
                               <Paper sx={{ p: 1.5, boxShadow: 3, maxWidth: 280 }}>
                                 <Typography variant="subtitle2" fontWeight={700}>{d.fullName}</Typography>
                                 <Box sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
-                                  <Typography variant="body2" color="#1565c0" fontWeight={600}>Before: {d.Before} days</Typography>
-                                  <Typography variant="body2" color="#c62828" fontWeight={600}>After: {d.After} days</Typography>
+                                  <Typography variant="body2" color="#00897b" fontWeight={600}>Before: {d.Before} days</Typography>
+                                  <Typography variant="body2" color="#8e24aa" fontWeight={600}>After: {d.After} days</Typography>
                                 </Box>
                                 <Typography variant="body2" sx={{ mt: 0.5 }}
                                   color={d.Shift > 0 ? 'error.main' : d.Shift < 0 ? 'success.main' : 'text.secondary'}
@@ -284,8 +398,8 @@ export default function SimulationLab() {
                           }}
                         />
                         <Legend />
-                        <Bar dataKey="Before" name="Before Impact" fill="#1565c0" radius={[0, 6, 6, 0]} barSize={14} fillOpacity={0.85} />
-                        <Bar dataKey="After" name="After Impact" fill="#c62828" radius={[0, 6, 6, 0]} barSize={14} fillOpacity={0.85} />
+                        <Bar dataKey="Before" name="Before Impact" fill="#b2dfdb" radius={[0, 6, 6, 0]} barSize={14} />
+                        <Bar dataKey="After" name="After Impact" fill="#e1bee7" radius={[0, 6, 6, 0]} barSize={14} />
                       </BarChart>
                     </ResponsiveContainer>
                   </Paper>

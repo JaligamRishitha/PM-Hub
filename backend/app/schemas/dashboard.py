@@ -68,7 +68,7 @@ class PortfolioHealth(BaseModel):
 class PlannedVsActualItem(BaseModel):
     month: str
     planned: float
-    actual: float
+    actual: Optional[float] = None
     projects: List[str]  # project names active in this month
 
 

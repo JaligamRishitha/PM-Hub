@@ -14,12 +14,27 @@ from app.models.project import Project
 from app.models.activity import ProjectActivity
 
 
+PHASE_ORDER = ["Pre Gate B", "Gate B-C", "Gate C-D", "Closure"]
+
+
+def _phase_index(phase_name: str) -> int:
+    """Return ordinal index of a phase.  Unknown phases sort after Closure."""
+    try:
+        return PHASE_ORDER.index(phase_name)
+    except ValueError:
+        return len(PHASE_ORDER)
+
+
 def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]) -> Dict[str, Any]:
     """Simulate adding delay to a milestone or an entire phase.
 
-    Cascading logic: when a single milestone or phase is delayed, all
-    milestones and activities that fall on or after the earliest affected
-    date are also shifted forward by the same delay.
+    Cascading logic — phase-aware dependency chain:
+      1. Identify the *trigger phase* (the phase of the selected milestone
+         or the directly-selected phase).
+      2. Every milestone / activity in the trigger phase **and all
+         subsequent phases** is shifted forward by the delay.
+      3. A per-phase cascade breakdown is returned so the UI can show the
+         ripple effect across the project lifecycle.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     milestones = db.query(Milestone).filter(Milestone.project_id == project_id).all()
@@ -30,19 +45,56 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
     target_phase = params.get("phase")
     delta = timedelta(days=delay_days)
 
-    # ── Determine the cascade threshold date ──
-    # Everything on or after this date gets shifted.
-    cascade_from = None
-
+    # ── Determine trigger phase ──
+    trigger_phase = None
     if target_milestone_id:
         for m in milestones:
             if m.id == int(target_milestone_id):
-                cascade_from = m.planned_date
+                trigger_phase = m.phase
                 break
     elif target_phase:
-        phase_dates = [m.planned_date for m in milestones if m.phase == target_phase]
+        trigger_phase = target_phase
+
+    trigger_idx = _phase_index(trigger_phase) if trigger_phase else 0
+
+    # Collect all phases actually present in the project (ordered)
+    project_phases = sorted(
+        {a.phase for a in activities if a.phase},
+        key=_phase_index,
+    )
+
+    # Phases that will be affected (trigger phase + everything after)
+    affected_phases = set()
+    for ph in project_phases:
+        if _phase_index(ph) >= trigger_idx:
+            affected_phases.add(ph)
+
+    def _should_shift_milestone(m):
+        """Decide if a milestone should be shifted."""
+        if trigger_phase is None:
+            return True  # No target → delay everything
+        if target_milestone_id:
+            # Shift the target milestone + everything in its phase and later phases
+            return (m.phase in affected_phases) if m.phase else (m.planned_date >= _cascade_date)
+        return m.phase in affected_phases if m.phase else False
+
+    def _should_shift_activity(a):
+        """Decide if an activity should be shifted."""
+        if trigger_phase is None:
+            return True
+        return a.phase in affected_phases if a.phase else False
+
+    # Fallback cascade date for milestones without phase info
+    _cascade_date = None
+    if target_milestone_id:
+        for m in milestones:
+            if m.id == int(target_milestone_id):
+                _cascade_date = m.planned_date
+                break
+    elif trigger_phase:
+        phase_dates = [m.planned_date for m in milestones if m.phase == trigger_phase]
         if phase_dates:
-            cascade_from = min(phase_dates)
+            _cascade_date = min(phase_dates)
 
     # ── Build before / after milestone lists ──
     before_milestones = []
@@ -62,18 +114,10 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
         }
         before_milestones.append(before_row)
 
-        # Decide whether this milestone should be shifted
-        apply_delay = False
-        if cascade_from is not None:
-            # Cascade: shift this milestone and everything on or after the threshold
-            if m.planned_date >= cascade_from:
-                apply_delay = True
-        else:
-            # No specific target → delay all milestones
-            apply_delay = True
+        apply_delay = _should_shift_milestone(m)
 
         new_planned = m.planned_date + delta if apply_delay else m.planned_date
-        new_actual = m.actual_date  # don't touch completed actuals
+        new_actual = m.actual_date
         sim_delay = 0
         if new_actual and new_actual > new_planned:
             sim_delay = (new_actual - new_planned).days
@@ -95,7 +139,7 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
             "shifted": apply_delay,
         })
 
-    # ── Build before / after activity lists (cascade the same threshold) ──
+    # ── Build before / after activity lists ──
     before_activities = []
     after_activities = []
     for a in activities:
@@ -109,13 +153,7 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
         }
         before_activities.append(before_row)
 
-        apply_delay = False
-        if cascade_from is not None:
-            # Activity starts on or after the cascade date → shift it
-            if a.planned_start >= cascade_from:
-                apply_delay = True
-        else:
-            apply_delay = True
+        apply_delay = _should_shift_activity(a)
 
         after_activities.append({
             **before_row,
@@ -126,7 +164,7 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
 
     # ── Compute new project end date ──
     original_end = project.end_date
-    new_end = original_end + delta if cascade_from is None else original_end
+    new_end = original_end + delta if trigger_phase is None else original_end
     for am in after_milestones:
         import datetime
         d = datetime.date.fromisoformat(am["planned_date"])
@@ -141,6 +179,27 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
     total_delay = delay_days
     project_status = "At Risk" if critical_impacted else project.status
 
+    # ── Per-phase cascade breakdown ──
+    # Shows which phases are impacted + counts of shifted items
+    cascade_breakdown = []
+    for ph in project_phases:
+        is_affected = ph in affected_phases
+        ph_milestones = [am for am in after_milestones if am.get("phase") == ph]
+        ph_activities = [aa for aa in after_activities if aa.get("phase") == ph]
+        shifted_m = sum(1 for m in ph_milestones if m.get("shifted"))
+        shifted_a = sum(1 for a in ph_activities if a.get("shifted"))
+        cascade_breakdown.append({
+            "phase": ph,
+            "phase_order": _phase_index(ph),
+            "is_trigger": ph == trigger_phase,
+            "is_affected": is_affected,
+            "delay_days": delay_days if is_affected else 0,
+            "milestones_total": len(ph_milestones),
+            "milestones_shifted": shifted_m,
+            "activities_total": len(ph_activities),
+            "activities_shifted": shifted_a,
+        })
+
     return {
         "project_name": project.name,
         "original_end_date": original_end.isoformat(),
@@ -149,6 +208,9 @@ def run_schedule_simulation(db: Session, project_id: int, params: Dict[str, Any]
         "critical_milestone_impacted": critical_impacted,
         "project_status_before": project.status,
         "project_status_after": project_status,
+        "trigger_phase": trigger_phase,
+        "affected_phases": list(affected_phases),
+        "cascade_breakdown": cascade_breakdown,
         "before_milestones": before_milestones,
         "after_milestones": after_milestones,
         "before_activities": before_activities,

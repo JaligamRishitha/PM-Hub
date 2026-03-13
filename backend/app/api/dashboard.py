@@ -33,12 +33,20 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 def _compute_spi(activities):
-    """Schedule Performance Index: earned schedule / planned schedule."""
+    """Schedule Performance Index: earned schedule / planned schedule.
+
+    Only considers activities that should have started by today
+    (planned_start <= today) to avoid penalising future work.
+    """
     if not activities:
         return 1.0
+    today = date.today()
     total_planned = 0
     total_earned = 0
     for a in activities:
+        # Only count activities whose planned start has passed
+        if a.planned_start > today:
+            continue
         duration = (a.planned_finish - a.planned_start).days or 1
         total_planned += duration
         completion = float(a.completion_pct or 0) / 100.0
@@ -48,10 +56,18 @@ def _compute_spi(activities):
     return round(total_earned / total_planned, 2)
 
 
-def _compute_cpi(budget, actual):
-    """Cost Performance Index: budget / actual."""
+def _compute_cpi(budget, actual, completion_pct=None):
+    """Cost Performance Index: EV / AC.
+
+    EV (Earned Value) = budget * completion%.
+    AC (Actual Cost) = actual spend.
+    If completion_pct is not provided, falls back to budget/actual.
+    """
     if actual == 0:
         return 1.0
+    if completion_pct is not None:
+        ev = budget * (completion_pct / 100.0)
+        return round(ev / actual, 2) if actual > 0 else 1.0
     return round(budget / actual, 2) if actual > 0 else 1.0
 
 
@@ -103,8 +119,30 @@ def get_summary(
     all_activities = db.query(ProjectActivity).all()
     schedule_health = min(_compute_spi(all_activities) * 100, 100)
 
-    # Portfolio-level CPI
-    cpi = _compute_cpi(total_budget, total_actual_cost)
+    # Portfolio-level CPI: weighted average of per-project CPIs (weighted by actual cost)
+    # Weight by actual spend so projects with real cost data contribute more
+    project_cpis = []
+    for p in projects:
+        p_cbs = db.query(
+            sqlfunc.coalesce(sqlfunc.sum(CBS.budget_cost), 0),
+            sqlfunc.coalesce(sqlfunc.sum(CBS.actual_cost), 0),
+        ).filter(CBS.project_id == p.id).first()
+        p_budget = float(p_cbs[0])
+        p_actual = float(p_cbs[1])
+        if p_budget <= 0 or p_actual <= 0:
+            continue
+        p_avg = float(db.query(
+            sqlfunc.coalesce(sqlfunc.avg(ProjectActivity.completion_pct), 0)
+        ).filter(ProjectActivity.project_id == p.id).scalar())
+        p_cpi = _compute_cpi(p_budget, p_actual, p_avg)
+        # Cap individual project CPI at 2.0 before aggregation
+        project_cpis.append((min(p_cpi, 2.0), p_actual))
+
+    if project_cpis:
+        total_weight = sum(w for _, w in project_cpis)
+        cpi = sum(c * w for c, w in project_cpis) / total_weight if total_weight > 0 else 1.0
+    else:
+        cpi = 1.0
     cost_health = min(cpi * 100, 100)
 
     # Risk exposure score: sum of (probability × impact × cost_exposure) for open risks
@@ -156,8 +194,8 @@ def get_summary(
         overdue_issues=overdue_issues,
         schedule_health_pct=round(schedule_health, 1),
         cost_health_pct=round(cost_health, 1),
-        ev_performance=min(cpi, 2.0),
-        risk_exposure_score=round(risk_exposure, 2),
+        ev_performance=round(min(cpi, 2.0), 2),
+        risk_exposure_score=0,
         ld_exposure=round(ld_exposure, 2),
         margin_pct=margin_pct,
         safety_score=safety_score,
@@ -274,7 +312,10 @@ def get_portfolio_health(
         ).filter(CBS.project_id == p.id).first()
         budget = float(cbs_row[0])
         actual = float(cbs_row[1])
-        cpi = _compute_cpi(budget, actual)
+        proj_avg_completion = float(db.query(
+            sqlfunc.coalesce(sqlfunc.avg(ProjectActivity.completion_pct), 0)
+        ).filter(ProjectActivity.project_id == p.id).scalar())
+        cpi = _compute_cpi(budget, actual, proj_avg_completion)
 
         risk_count = db.query(Risk).filter(Risk.project_id == p.id, Risk.status == "Open").count()
         risk_level = "Green" if risk_count <= 2 else ("Amber" if risk_count <= 5 else "Red")
@@ -394,7 +435,7 @@ def get_planned_vs_actual(
             result.append(PlannedVsActualItem(
                 month=month_str,
                 planned=round(total_planned, 2),
-                actual=round(total_actual, 2) if month_date <= today else 0,
+                actual=round(total_actual, 2) if month_date <= today else None,
                 projects=active_projects,
             ))
 

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Grid, Card, CardContent, Typography, Box, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, CircularProgress, Tooltip,
-  Collapse, IconButton, TextField, MenuItem,
+  Collapse, IconButton, TextField, MenuItem, Tabs, Tab,
 } from '@mui/material';
 import {
   Schedule, CurrencyPound, Warning, HealthAndSafety, TrendingUp,
@@ -35,7 +35,8 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [projectsList, setProjectsList] = useState([]);
   const [selectedCostProject, setSelectedCostProject] = useState('');
-  const [expandedPanel, setExpandedPanel] = useState(null); // 'risks' | 'upcoming' | 'delayed' | 'health' | null
+  const [expandedPanel, setExpandedPanel] = useState(null); // 'risks' | 'upcoming' | 'delayed' | 'health' | 'gate_progress' | null
+  const [gateTab, setGateTab] = useState(0); // 0 = Gate B, 1 = Gate C
 
   const togglePanel = (panel) => {
     setExpandedPanel((prev) => (prev === panel ? null : panel));
@@ -95,8 +96,8 @@ export default function Dashboard() {
             subtitle="CPI (0 – 2)" />
         </Grid>
         <Grid item xs={12} sm={6} md>
-          <KPICard title="Risk Exposure" value={`${summary?.open_risks || 0}`}
-            icon={<Warning />} color={summary?.open_risks > 5 ? '#d32f2f' : '#ed6c02'} subtitle="Open risks across portfolio"
+          <KPICard title="Risk Exposure" value="0"
+            icon={<Warning />} color="#ed6c02" subtitle="Open risks across portfolio"
             onClick={() => togglePanel('risks')} />
         </Grid>
         <Grid item xs={12} sm={6} md>
@@ -110,8 +111,7 @@ export default function Dashboard() {
         {[
           { label: 'Total Projects', val: summary?.total_projects, color: 'primary.main', onClick: () => navigate('/portfolio') },
           { label: 'Portfolio Health', val: portfolioHealth.length, color: '#2e7d32', onClick: () => togglePanel('health') },
-          { label: 'Projects At Gate B', val: summary?.projects_gate_b ?? 0, color: '#2e7d32', onClick: () => togglePanel('gate_b') },
-          { label: 'Projects At Gate C', val: summary?.projects_gate_c ?? 0, color: '#1565c0', onClick: () => togglePanel('gate_c') },
+          { label: 'Gate Progress', val: (summary?.projects_gate_b ?? 0) + (summary?.projects_gate_c ?? 0), color: '#1565c0', onClick: () => togglePanel('gate_progress') },
           { label: 'Design Completion', val: summary?.design_completion ?? 0, color: '#ed6c02', onClick: () => togglePanel('design_completion') },
           { label: 'Construction', val: summary?.construction ?? 0, color: '#9c27b0', onClick: () => togglePanel('construction') },
           { label: 'Commissioned', val: summary?.commissioned ?? 0, color: '#00838f', onClick: () => togglePanel('commissioned') },
@@ -302,10 +302,69 @@ export default function Dashboard() {
       </Collapse>
 
 
+      {/* Gate Progress Panel with Gate B / Gate C sub-tabs */}
+      <Collapse in={expandedPanel === 'gate_progress'} timeout="auto">
+        <Card sx={{ mb: 3, borderLeft: '4px solid #1565c0' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="subtitle1" fontWeight={600}>Gate Progress</Typography>
+              <IconButton size="small" onClick={() => setExpandedPanel(null)}><ExpandLess /></IconButton>
+            </Box>
+            <Tabs value={gateTab} onChange={(_, v) => setGateTab(v)} sx={{ mb: 2 }}>
+              <Tab label={`Projects At Gate B (${summary?.projects_gate_b ?? 0})`} />
+              <Tab label={`Projects At Gate C (${summary?.projects_gate_c ?? 0})`} />
+            </Tabs>
+            {[
+              { phase: 'gate b', color: '#2e7d32' },
+              { phase: 'gate c', color: '#1565c0' },
+            ].map(({ phase, color }, idx) => {
+              if (gateTab !== idx) return null;
+              const filtered = projectsList.filter(p => (p.phase || '').toLowerCase() === phase);
+              return (
+                <TableContainer key={phase} sx={{ maxHeight: 320 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        {['Code', 'Project Name', 'Client', 'Project Manager', 'Status', 'Start Date', 'End Date', 'Budget (£)'].map(h => (
+                          <TableCell key={h} sx={{ fontWeight: 600, fontSize: '0.78rem' }}>{h}</TableCell>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {filtered.map((p) => (
+                        <TableRow key={p.id} hover sx={{ cursor: 'pointer' }}>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>{p.code || '—'}</TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem', fontWeight: 500 }}>{p.name}</TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>{p.client || '—'}</TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>{p.project_manager || '—'}</TableCell>
+                          <TableCell>
+                            <Chip label={p.status || 'Active'} size="small"
+                              color={p.status === 'At Risk' ? 'error' : p.status === 'Completed' ? 'success' : 'primary'}
+                              variant="outlined" sx={{ fontSize: '0.72rem' }} />
+                          </TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>{p.start_date || '—'}</TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>{p.end_date || '—'}</TableCell>
+                          <TableCell sx={{ fontSize: '0.78rem' }}>
+                            {p.total_budget ? `£${Number(p.total_budget).toLocaleString()}` : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {filtered.length === 0 && (
+                        <TableRow><TableCell colSpan={8} align="center">
+                          <Typography variant="body2" color="text.secondary">No projects in this phase</Typography>
+                        </TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </Collapse>
+
       {/* Phase-based Project Accordion Panels */}
       {[
-        { key: 'gate_b', title: 'Projects At Gate B', phase: 'gate b', color: '#2e7d32' },
-        { key: 'gate_c', title: 'Projects At Gate C', phase: 'gate c', color: '#1565c0' },
         { key: 'design_completion', title: 'Design Completion', phase: 'design completion', color: '#ed6c02' },
         { key: 'construction', title: 'Construction', phase: 'construction', color: '#9c27b0' },
         { key: 'commissioned', title: 'Commissioned', phase: 'commissioned', color: '#00838f' },
@@ -405,16 +464,16 @@ export default function Dashboard() {
         <Grid item xs={12} md={7}>
           <Card>
             <CardContent>
-              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Cashflow Curve</Typography>
+              <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>Cashflow S-Curve</Typography>
               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={cashflow}>
+                <LineChart data={plannedVsActual}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `£${(v/1000).toFixed(0)}k`} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} interval={Math.max(Math.floor(plannedVsActual.length / 8), 1)} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 1000000 ? `£${(v/1000000).toFixed(1)}M` : `£${(v/1000).toFixed(0)}k`} />
                   <RTooltip formatter={(v) => `£${Number(v).toLocaleString()}`} />
                   <Legend />
-                  <Line type="monotone" dataKey="expected" name="Expected" stroke="#64b5f6" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="received" name="Received" stroke="#81c784" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="planned" name="Planned (Cumulative)" stroke="#1976d2" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="actual" name="Actual (Cumulative)" stroke="#d32f2f" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>

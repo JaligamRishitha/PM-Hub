@@ -26,6 +26,8 @@ services:
     environment:
       DATABASE_URL: postgresql://pmhub:pmhub_secret@db:5432/pmhub
       SECRET_KEY: super-secret-key-change-in-production-minimum-32-chars
+    volumes:
+      - .:/data:ro
     depends_on:
       db:
         condition: service_healthy

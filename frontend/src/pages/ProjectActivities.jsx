@@ -12,12 +12,12 @@ import {
 } from '@mui/icons-material';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-  ResponsiveContainer, ReferenceLine,
+  ResponsiveContainer, ReferenceLine, Label, Legend,
 } from 'recharts';
 import {
   getActivities, createActivity, updateActivity, deleteActivity,
   getMilestones, createMilestone, updateMilestone, deleteMilestone,
-  getCBS,
+  getCBS, getWBS,
 } from '../services/api';
 import StatusChip from '../components/StatusChip';
 import FormDialog from '../components/FormDialog';
@@ -26,7 +26,7 @@ import { useProject } from '../context/ProjectContext';
 const ACTIVITY_FIELDS = [
   { name: 'activity_code', label: 'Activity Code' },
   { name: 'activity_name', label: 'Activity Name', required: true },
-  { name: 'phase', label: 'Phase', type: 'select', options: ['Design', 'Procurement', 'Construction', 'Commissioning', 'Closure'], required: true },
+  { name: 'phase', label: 'Phase', type: 'select', options: ['Pre Gate B', 'Gate B-C', 'Gate C-D', 'Closure'], required: true },
   { name: 'planned_start', label: 'Planned Start', type: 'date', required: true },
   { name: 'planned_finish', label: 'Planned Finish', type: 'date', required: true },
   { name: 'actual_start', label: 'Actual Start', type: 'date' },
@@ -38,54 +38,16 @@ const ACTIVITY_FIELDS = [
 
 const MILESTONE_FIELDS = [
   { name: 'name', label: 'Milestone Name', required: true },
-  { name: 'phase', label: 'Phase', type: 'select', options: ['Design', 'Procurement', 'Construction', 'Commissioning', 'Closure'], required: true },
+  { name: 'phase', label: 'Phase', type: 'select', options: ['Pre Gate B', 'Gate B-C', 'Gate C-D', 'Closure'], required: true },
   { name: 'planned_date', label: 'Planned Date', type: 'date', required: true },
   { name: 'actual_date', label: 'Actual Date', type: 'date' },
   { name: 'is_critical', label: 'Is Critical', type: 'boolean' },
 ];
 
-/* ── Mock WBS data ── */
-const MOCK_WBS = [
-  { id: 'WBS-1.0', name: 'Project Initiation', level: 0, parent: '-', status: 'Completed' },
-  { id: 'WBS-1.1', name: 'Stakeholder Identification', level: 1, parent: 'WBS-1.0', status: 'Completed' },
-  { id: 'WBS-1.2', name: 'Project Charter Approval', level: 1, parent: 'WBS-1.0', status: 'Completed' },
-  { id: 'WBS-GB.0', name: 'Gate B – Feasibility Review', level: 0, parent: '-', status: 'Completed', isGate: true },
-  { id: 'WBS-GB.1', name: 'Business Case Validation', level: 1, parent: 'WBS-GB.0', status: 'Completed' },
-  { id: 'WBS-GB.2', name: 'Feasibility Study Sign-off', level: 1, parent: 'WBS-GB.0', status: 'Completed' },
-  { id: 'WBS-GB.3', name: 'Risk & Opportunity Assessment', level: 1, parent: 'WBS-GB.0', status: 'Completed' },
-  { id: 'WBS-GB.4', name: 'Gate B Approval Decision', level: 1, parent: 'WBS-GB.0', status: 'Completed' },
-  { id: 'WBS-2.0', name: 'Design Phase', level: 0, parent: '-', status: 'Active' },
-  { id: 'WBS-2.1', name: 'Preliminary Design', level: 1, parent: 'WBS-2.0', status: 'Completed' },
-  { id: 'WBS-2.2', name: 'Detailed Design', level: 1, parent: 'WBS-2.0', status: 'Active' },
-  { id: 'WBS-2.3', name: 'Design Review & Signoff', level: 1, parent: 'WBS-2.0', status: 'Pending' },
-  { id: 'WBS-GC.0', name: 'Gate C – Design Completion Review', level: 0, parent: '-', status: 'Pending', isGate: true },
-  { id: 'WBS-GC.1', name: 'Design Deliverables Verification', level: 1, parent: 'WBS-GC.0', status: 'Pending' },
-  { id: 'WBS-GC.2', name: 'Cost Estimate Finalisation', level: 1, parent: 'WBS-GC.0', status: 'Pending' },
-  { id: 'WBS-GC.3', name: 'Construction Readiness Check', level: 1, parent: 'WBS-GC.0', status: 'Pending' },
-  { id: 'WBS-GC.4', name: 'Gate C Approval Decision', level: 1, parent: 'WBS-GC.0', status: 'Pending' },
-  { id: 'WBS-3.0', name: 'Procurement', level: 0, parent: '-', status: 'Pending' },
-  { id: 'WBS-3.1', name: 'Vendor Selection', level: 1, parent: 'WBS-3.0', status: 'Pending' },
-  { id: 'WBS-3.2', name: 'Material Ordering', level: 1, parent: 'WBS-3.0', status: 'Pending' },
-  { id: 'WBS-4.0', name: 'Construction', level: 0, parent: '-', status: 'Pending' },
-  { id: 'WBS-4.1', name: 'Site Preparation', level: 1, parent: 'WBS-4.0', status: 'Pending' },
-  { id: 'WBS-4.2', name: 'Structural Works', level: 1, parent: 'WBS-4.0', status: 'Pending' },
-  { id: 'WBS-4.3', name: 'MEP Installation', level: 1, parent: 'WBS-4.0', status: 'Pending' },
-  { id: 'WBS-5.0', name: 'Commissioning & Handover', level: 0, parent: '-', status: 'Pending' },
-];
+/* WBS data is now loaded from the API — no mock data */
 
-/* ── Mock Resources data ── */
-const MOCK_RESOURCES = [
-  { id: 'R-001', name: 'John Carter', role: 'Project Manager', type: 'Labour', unit: 'hrs', rate: 95, allocation: 100 },
-  { id: 'R-002', name: 'Sarah Mitchell', role: 'Lead Engineer', type: 'Labour', unit: 'hrs', rate: 85, allocation: 80 },
-  { id: 'R-003', name: 'David Lee', role: 'Site Supervisor', type: 'Labour', unit: 'hrs', rate: 65, allocation: 100 },
-  { id: 'R-004', name: 'Emma Wilson', role: 'Safety Officer', type: 'Labour', unit: 'hrs', rate: 70, allocation: 50 },
-  { id: 'R-005', name: 'Tower Crane TC-200', role: '-', type: 'Equipment', unit: 'days', rate: 1200, allocation: 100 },
-  { id: 'R-006', name: 'Concrete Pump CP-50', role: '-', type: 'Equipment', unit: 'days', rate: 800, allocation: 60 },
-  { id: 'R-007', name: 'Structural Steel', role: '-', type: 'Material', unit: 'tonnes', rate: 950, allocation: '-' },
-  { id: 'R-008', name: 'Ready-Mix Concrete', role: '-', type: 'Material', unit: 'm³', rate: 120, allocation: '-' },
-  { id: 'R-009', name: 'Rebar Grade 60', role: '-', type: 'Material', unit: 'tonnes', rate: 780, allocation: '-' },
-  { id: 'R-010', name: 'Lisa Chen', role: 'QA/QC Inspector', type: 'Labour', unit: 'hrs', rate: 72, allocation: 75 },
-];
+/* ── Resources data ── */
+const MOCK_RESOURCES = [];
 
 function computeScheduleKPIs(activities) {
   if (!activities.length) return { spi: 1, delayDays: 0, onTrack: 0, delayed: 0, completed: 0 };
@@ -159,7 +121,7 @@ function ActivityDetailsDialog({ open, onClose, activity }) {
           </Grid>
           <Grid item xs={4}>
             <TextField label="Phase" value={form.phase} onChange={e => set('phase', e.target.value)} fullWidth size="small" select>
-              {['Design', 'Procurement', 'Construction', 'Commissioning', 'Closure'].map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
+              {['Pre Gate B', 'Gate B-C', 'Gate C-D', 'Closure'].map(o => <MenuItem key={o} value={o}>{o}</MenuItem>)}
             </TextField>
           </Grid>
           <Grid item xs={4}>
@@ -514,20 +476,39 @@ export default function ProjectActivities() {
     try { setCbsItems((await getCBS(pid)).data); } catch { /* */ }
   }, []);
 
+  const [wbsData, setWbsData] = useState([]);
+  const loadWBS = useCallback(async (pid) => {
+    try { setWbsData((await getWBS(pid)).data); } catch { /* */ }
+  }, []);
+
   useEffect(() => {
     if (selectedProjectId) {
       loadActivities(selectedProjectId);
       loadMilestones(selectedProjectId);
       loadCBS(selectedProjectId);
+      loadWBS(selectedProjectId);
     }
-  }, [selectedProjectId, loadActivities, loadMilestones, loadCBS]);
+  }, [selectedProjectId, loadActivities, loadMilestones, loadCBS, loadWBS]);
+
+  // Flatten WBS tree for table display
+  const flatWBS = React.useMemo(() => {
+    const result = [];
+    const flatten = (nodes, parentName) => {
+      (nodes || []).forEach(n => {
+        result.push({ id: n.id, code: n.code, name: n.name, level: n.level, parent: parentName || '-', children: n.children });
+        if (n.children?.length) flatten(n.children, n.name);
+      });
+    };
+    flatten(wbsData, null);
+    return result;
+  }, [wbsData]);
 
   const openForm = (title, fields, values, onSubmit) => setDialog({ open: true, title, fields, values: { ...values }, onSubmit });
   const closeForm = () => setDialog({ ...dialog, open: false });
   const handleChange = (name, value) => setDialog((d) => ({ ...d, values: { ...d.values, [name]: value } }));
 
   const handleCreateActivity = () =>
-    openForm('New Activity', ACTIVITY_FIELDS, { phase: 'Construction', completion_pct: 0, is_milestone: false, is_critical: false }, async (vals) => {
+    openForm('New Activity', ACTIVITY_FIELDS, { phase: 'Gate C-D', completion_pct: 0, is_milestone: false, is_critical: false }, async (vals) => {
       await createActivity({ ...vals, project_id: selectedProjectId });
       closeForm();
       loadActivities(selectedProjectId);
@@ -621,7 +602,7 @@ export default function ProjectActivities() {
   };
 
   const handleCreateMilestone = () =>
-    openForm('New Milestone', MILESTONE_FIELDS, { phase: 'Construction', is_critical: false }, async (vals) => {
+    openForm('New Milestone', MILESTONE_FIELDS, { phase: 'Gate C-D', is_critical: false }, async (vals) => {
       try {
         await createMilestone({ ...vals, project_id: selectedProjectId });
         closeForm();
@@ -740,7 +721,7 @@ export default function ProjectActivities() {
               <TableHead>
                 <TableRow>
                   {['Code', 'Activity', 'Phase', 'P.Start', 'P.Finish', 'A.Start', 'A.Finish', '%', 'Status', 'Delay', 'Critical', 'Actions'].map((h) => (
-                    <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>
+                    <TableCell key={h} sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</TableCell>
                   ))}
                 </TableRow>
               </TableHead>
@@ -750,18 +731,15 @@ export default function ProjectActivities() {
                     key={a.id}
                     sx={{
                       bgcolor: a.is_critical ? '#fff3e0' : idx % 2 === 0 ? '#fafafa' : '#ffffff',
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: '#f0f4ff' },
                     }}
-                    onClick={() => setActivityDetail({ open: true, activity: a })}
                   >
                     <TableCell><Typography variant="body2" color="text.secondary">{a.activity_code || '-'}</Typography></TableCell>
                     <TableCell>{a.activity_name}</TableCell>
                     <TableCell>{a.phase}</TableCell>
-                    <TableCell>{a.planned_start}</TableCell>
-                    <TableCell>{a.planned_finish}</TableCell>
-                    <TableCell>{a.actual_start || '-'}</TableCell>
-                    <TableCell>{a.actual_finish || '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{a.planned_start}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{a.planned_finish}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{a.actual_start || '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{a.actual_finish || '-'}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 80 }}>
                         <LinearProgress variant="determinate" value={a.completion_pct} sx={{ flex: 1, height: 8, borderRadius: 4 }} />
@@ -824,9 +802,10 @@ export default function ProjectActivities() {
               <TableContainer>
                 <Table size="small">
                   <TableHead><TableRow>
-                    {['Milestone', 'Phase', 'Planned', 'Actual', 'Status', 'Delay', 'Critical', 'Actions'].map((h) => (
+                    {['Milestone', 'Phase', 'Planned', 'Actual', 'Status', 'Delay', 'Critical'].map((h) => (
                       <TableCell key={h} sx={{ fontWeight: 600 }}>{h}</TableCell>
                     ))}
+                    <TableCell sx={{ fontWeight: 600, minWidth: 120 }}>Actions</TableCell>
                   </TableRow></TableHead>
                   <TableBody>
                     {milestones.map((m) => (
@@ -849,22 +828,58 @@ export default function ProjectActivities() {
               </TableContainer>
             </Paper>
           ) : (
-            <Paper sx={{ p: 3, height: 400 }}>
+            <Paper sx={{ p: 3, height: Math.max(400, milestones.length * 40 + 100) }}>
               <Typography variant="subtitle1" fontWeight={600} mb={2}>Milestone Timeline</Typography>
               <ResponsiveContainer width="100%" height="85%">
-                <BarChart data={milestones.map((m) => ({
-                  name: m.name.length > 20 ? m.name.substring(0, 20) + '...' : m.name,
-                  'Planned (days)': Math.round((new Date(m.planned_date) - new Date()) / 86400000),
-                  'Actual (days)': m.actual_date ? Math.round((new Date(m.actual_date) - new Date()) / 86400000) : null,
-                }))} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" label={{ value: 'Days from Today', position: 'insideBottom', offset: -5 }} />
-                  <YAxis dataKey="name" type="category" width={160} tick={{ fontSize: 11 }} />
-                  <RTooltip />
-                  <ReferenceLine x={0} stroke="#666" strokeDasharray="3 3" label="Today" />
-                  <Bar dataKey="Planned (days)" fill="#90caf9" radius={[0, 4, 4, 0]} />
-                  <Bar dataKey="Actual (days)" fill="#ffcc80" radius={[0, 4, 4, 0]} />
-                </BarChart>
+                {(() => {
+                  const projStart = milestones.length > 0
+                    ? new Date(milestones.reduce((min, m) => m.planned_date < min ? m.planned_date : min, milestones[0].planned_date))
+                    : new Date();
+                  const todayOffset = Math.round((new Date() - projStart) / 86400000);
+                  const chartData = milestones.map((m) => {
+                    const plannedOffset = Math.round((new Date(m.planned_date) - projStart) / 86400000);
+                    const actualOffset = m.actual_date ? Math.round((new Date(m.actual_date) - projStart) / 86400000) : null;
+                    return {
+                      name: m.name.length > 22 ? m.name.substring(0, 22) + '…' : m.name,
+                      fullName: m.name,
+                      Planned: plannedOffset,
+                      Actual: actualOffset,
+                      status: m.status,
+                      delay: m.delay_days,
+                    };
+                  });
+                  return (
+                    <BarChart data={chartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" tick={{ fontSize: 11 }}>
+                        <Label value="Days from Project Start" position="insideBottom" offset={-5} style={{ fontSize: 12, fill: '#666' }} />
+                      </XAxis>
+                      <YAxis dataKey="name" type="category" width={180} tick={{ fontSize: 11 }} />
+                      <RTooltip content={({ payload }) => {
+                        if (!payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        if (!d) return null;
+                        const fmtDate = (offset) => {
+                          const dt = new Date(projStart);
+                          dt.setDate(dt.getDate() + offset);
+                          return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                        };
+                        return (
+                          <Paper sx={{ p: 1.5, boxShadow: 3 }}>
+                            <Typography variant="subtitle2" fontWeight={700}>{d.fullName}</Typography>
+                            <Typography variant="body2" color="#1976d2">Planned: {fmtDate(d.Planned)} (day {d.Planned})</Typography>
+                            {d.Actual != null && <Typography variant="body2" color="#ed6c02">Actual: {fmtDate(d.Actual)} (day {d.Actual})</Typography>}
+                            {d.delay > 0 && <Typography variant="body2" color="error" fontWeight={600}>Delay: {d.delay} days</Typography>}
+                          </Paper>
+                        );
+                      }} />
+                      <Legend />
+                      <ReferenceLine x={todayOffset} stroke="#d32f2f" strokeDasharray="5 3" label={{ value: 'Today', position: 'top', fill: '#d32f2f', fontSize: 11 }} />
+                      <Bar dataKey="Planned" name="Planned Date" fill="#90caf9" radius={[0, 4, 4, 0]} barSize={10} />
+                      <Bar dataKey="Actual" name="Actual Date" fill="#ffcc80" radius={[0, 4, 4, 0]} barSize={10} />
+                    </BarChart>
+                  );
+                })()}
               </ResponsiveContainer>
             </Paper>
           )}
@@ -911,38 +926,37 @@ export default function ProjectActivities() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {MOCK_WBS.slice(wbsPage * wbsRowsPerPage, wbsPage * wbsRowsPerPage + wbsRowsPerPage).map((w) => (
+                {flatWBS.slice(wbsPage * wbsRowsPerPage, wbsPage * wbsRowsPerPage + wbsRowsPerPage).map((w) => (
                   <TableRow
                     key={w.id}
                     sx={{
-                      cursor: 'pointer',
-                      bgcolor: w.isGate && w.level === 0 ? '#fff8e1' : w.isGate ? '#fffde7' : w.level === 0 ? '#f5f7fa' : 'inherit',
-                      borderLeft: w.isGate ? '4px solid #f57c00' : 'none',
-                      '&:hover': { bgcolor: w.isGate ? '#fff3e0' : '#f0f4ff' },
+                      bgcolor: w.level === 0 ? '#f5f7fa' : w.level === 1 ? '#fafbff' : 'inherit',
+                      borderLeft: w.level === 0 ? '4px solid #1565c0' : 'none',
                     }}
-                    onClick={() => setWbsForm({ open: true, item: w })}
                   >
                     <TableCell>
-                      <Typography variant="body2" fontWeight={w.level === 0 ? 700 : 400} sx={{ pl: w.level * 3, color: w.isGate && w.level === 0 ? '#e65100' : 'inherit' }}>
-                        {w.id}
+                      <Typography variant="body2" fontWeight={w.level === 0 ? 700 : 400} sx={{ pl: w.level * 3 }}>
+                        {w.code}
                       </Typography>
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: w.level * 3 }}>
-                        {w.isGate && w.level === 0 && <FlagCircle sx={{ fontSize: 18, color: '#f57c00' }} />}
-                        <Typography fontWeight={w.level === 0 ? 600 : 400} sx={{ color: w.isGate && w.level === 0 ? '#e65100' : 'inherit' }}>
+                        {w.level === 0 && <AccountTree sx={{ fontSize: 18, color: '#1565c0' }} />}
+                        <Typography fontWeight={w.level === 0 ? 600 : 400}>
                           {w.name}
                         </Typography>
+                        {w.children?.length > 0 && (
+                          <Chip label={`${w.children.length}`} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+                        )}
                       </Box>
                     </TableCell>
                     <TableCell>{w.parent}</TableCell>
                     <TableCell>
                       <Chip
-                        label={w.status}
+                        label={w.level === 0 ? 'Section' : 'Sub-section'}
                         size="small"
-                        color={w.status === 'Completed' ? 'success' : w.status === 'Active' ? 'primary' : 'default'}
+                        color={w.level === 0 ? 'primary' : 'default'}
                         variant="outlined"
-                        sx={w.isGate && w.level === 0 ? { borderColor: '#f57c00', color: w.status === 'Completed' ? undefined : '#f57c00' } : {}}
                       />
                     </TableCell>
                     <TableCell>
@@ -978,7 +992,7 @@ export default function ProjectActivities() {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination component="div" count={MOCK_WBS.length} page={wbsPage} onPageChange={(_, p) => setWbsPage(p)}
+          <TablePagination component="div" count={flatWBS.length} page={wbsPage} onPageChange={(_, p) => setWbsPage(p)}
             rowsPerPage={wbsRowsPerPage} onRowsPerPageChange={(e) => { setWbsRowsPerPage(parseInt(e.target.value, 10)); setWbsPage(0); }} rowsPerPageOptions={[15, 25]} />
         </Paper>
       )}
@@ -1006,8 +1020,6 @@ export default function ProjectActivities() {
                 {MOCK_RESOURCES.slice(resPage * 10, resPage * 10 + 10).map((r) => (
                   <TableRow
                     key={r.id}
-                    sx={{ cursor: 'pointer', '&:hover': { bgcolor: '#f0f4ff' } }}
-                    onClick={() => setResourceForm({ open: true, resource: r })}
                   >
                     <TableCell><Typography variant="body2" color="text.secondary">{r.id}</Typography></TableCell>
                     <TableCell><Typography fontWeight={500}>{r.name}</Typography></TableCell>
